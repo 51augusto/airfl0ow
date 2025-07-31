@@ -18,8 +18,8 @@ time:
   # PS: extensivel até 3, mais que isso conversar com Devtools.
   produto1: ms-credito-vr
 
-  # Colocar tecnologia e versão da tecnologia seguindo o padrao <tecnologia>-<versao>
-  # Ex: java-8 / java-11 / java-17 ou node-14 / node-8 ou python-2.7 / python-3.9 ou go-1.17 etc.
+  # Colocar tecnologia e versão da tecnologia seguindo o padrao <tecnologia>-<versao> (Foco na versão major)
+  # Ex: java-8 / java-11 / java-17 ou node-14.x / node-8.x ou python-2.x / python-3.x / go-1.17 / ruby-3.x etc.
   tecnologia: java-21
 
   # Colocar o centro de custo da sua squad/unidade de negocio seguindo o padrao cr-<numero-cr>
@@ -142,10 +142,10 @@ podSecurityContext: {}
 # Configura contextos de seguranca do deployment
 # PS: Nao necessario
 securityContext: {}
-# capabilities:
-#   drop:
-#   - ALL
-# readOnlyRootFilesystem: true
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
 # runAsNonRoot: true
 # runAsUser: 1000
 # Configuracoes de service
@@ -297,14 +297,15 @@ autoscaling:
         periodSeconds: 180
 # Configura o keda na aplicacao, temos algumas triggers disponiveis, mantenha no seu helm somente o que for utilizar,
 # cada triger tem um nome unico, no cron por exemplo se for utilizar mais de um agendamento, deve ser definido como abaixo, se for apenas 1 remova o bloco cron2
+###### Descomente as triggers que deseja utilizar, caso nao for utilizar mantenha comentado ou sem a trigger
 keda:
   enabled: false  # Habilita o KEDA
   minReplicas: 1  # Número mínimo de réplicas
   maxReplicas: 10  # Número máximo de réplicas
-  cooldownPeriod: 300  # O período em segundos de espera após o último gatilho ser relatado como ativo antes de dimensionar o recurso de volta
+  cooldownPeriod: 90  # O período em segundos de espera após o último gatilho ser relatado como ativo antes de dimensionar o recurso de volta
   pollingInterval: 60  # Intervalo em segundos em que verificará cada fonte de gatilho no ScaledObject default 60.
-#  scaledObject:
-#    triggers:
+  scaledObject:
+    triggers:
 #      cron1:
 #        type: "cron"
 #        metadata:
@@ -333,7 +334,7 @@ keda:
 #        type: "rabbitmq"
 #        metadata:
 #           queueName: TransacoesPush  # nome da fila
-#           host-rabbit-keda: amqps://user:pass@host:porta/v-host  # valor deve ser inserido no secret por conter dados autenticação
+#           host-rabbit: amqps://user:pass@host:porta/v-host  # valor deve ser inserido no secret por conter dados autenticação
 #          tls: enable
 #          mode: QueueLength
 #           value: "1000"  # Valor que sera usado como base para escalar ambiente
@@ -351,6 +352,7 @@ keda:
 #        type: "dynatrace"
 #        metadata:
 #           host-dynatrace: https://instance.dynatrace.com  # Deve ser inserido no Secret
+#           token-dynatrace: *****  # Deve ser inserido no secret
 #          metricSelector: 'builtin:apps.web.activeUsersEst:filter(eq("dt.entity.application","APPLICATION-F715BE5E8C2816D9")):value:fold'  ##Construa a metrica com base na sua necessidade
 #           from: now-24h  # opcional periodo em que a query filtra para trazer resultados
 #           threshold: "2"  # Valor ao qual o scaledobject aciona o scalling
