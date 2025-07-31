@@ -304,8 +304,8 @@ keda:
   maxReplicas: 10  # Número máximo de réplicas
   cooldownPeriod: 90  # O período em segundos de espera após o último gatilho ser relatado como ativo antes de dimensionar o recurso de volta
   pollingInterval: 60  # Intervalo em segundos em que verificará cada fonte de gatilho no ScaledObject default 60.
-  scaledObject:
-    triggers:
+  # scaledObject:
+  #   triggers:
 #      cron1:
 #        type: "cron"
 #        metadata:
