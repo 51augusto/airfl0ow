@@ -1,1 +1,502 @@
----
+# Este values serve como referencia, onde todos os valores customizaveis sao declarado em seus valores padroes.
+# Devem ser populados de forma manual, vide pipeline para exemplo.
+# PS: A chave ambiente serve para auxiliar o pipeline, então, não esqueca do sufixo (-dev, -qa, -prd) na chave namespace.
+name: ms-motor-precificacao
+namespace: credito-pf-qa
+ambiente: -qa
+
+# Adiciona informacoes do time aos recursos kubernetes (labels).
+# PS: Obrigatorio (colocar em padrao de nomeclatura de DNS)
+time:
+  # Colocar unidade de negocio aqui
+  unidadeNegocio: "credito-pf"
+
+  # Colocar nome do time/squad aqui
+  squad: "consignado-e-fgts"
+
+  # Colocar os produtos a qual este componente (deploy/pod) pertence.
+  # PS: extensivel até 3, mais que isso conversar com Devtools.
+  produto1: "ms-credito-vr"
+
+  # Colocar tecnologia e versão da tecnologia seguindo o padrao <tecnologia>-<versao> (Foco na versão major)
+  # Ex: java-8 / java-11 / java-17 ou node-14.x / node-8.x ou python-2.x / python-3.x / go-1.17 / ruby-3.x etc.
+  tecnologia: java-21
+
+  # Colocar o centro de custo da sua squad/unidade de negocio seguindo o padrao cr-<numero-cr>
+  # Ex: cr-1234 / cr-3345 / cr-282830303 / cr-1029381094173192-3 etc
+  centroCusto: "cr-80991"
+
+  # Inserir o número da change do Jira para deploys em PRD. (Obrigatório na branch master)
+  # Ex: CHG-1234
+  chg: ""
+
+# Define configuracoes a ser utilizadas para produtos de empresas do Grupo VR.
+# Valores validos: vrbeneficios | globalpoints | ecossistema | vrbanco
+# PS: Obrigatorio
+company: "vrbeneficios"
+
+# Define numero de replicas, apesar que é sobrescrito pelo HPA. Então não é funcional.
+#  DEV/QA: 1
+#  PRD: 2
+replicaCount: 1
+
+# Define o tipo de rollout que a aplicação terá
+# Valores validos: RollingUpdate (padrao) | Recreate
+# DOC de referencia: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+# Para RollingUpdate, o maxSurge e o maxUnavailable estao com valor padrão (25% do HPA)
+tipoRollout: "RollingUpdate"
+
+# Define imagem a ser utilizada para deploy
+# repository e tag deve apontar para uma imagem presente no ECR da AWS VRPRD de forma manual
+# Vide pipeline para exemplo de como deve ser inserido o valor daqui.
+image:
+  repository: "404224439755.dkr.ecr.us-east-2.amazonaws.com/credito-pf-qa/ms-motor-precificacao"
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "latest"
+  # Overrides the image pulling policy. Values acceptable: IfNotPresent, Always
+  imagePullPolicy: Always
+
+# Configura as variaveis de ambiente para o deployment
+env:
+  - name: "TZ"
+    value: "America/Sao_Paulo"
+  - name: "JAVA_TOOL_OPTIONS"
+    value: "-Xms128m -Xmx512m -Djava.security.egd=file:/dev/./urandom -Dfile.encoding=UTF8 -Dspring.profiles.active=qa"
+# - name: VAR
+#   value: VALUE
+
+#Configura External Secrets
+# Ao habilitar, a secret gerenciada pelo External Secret sera importada como variavel de ambiente,
+# onde as chaves se tornarao as variaveis.
+# As secrets gerenciadas pelo External Secret possuem o mesmo nome do app + "-ambiente"
+externalSecrets:
+  enabled: true
+
+# Configura a secret como variavel de ambiente dentro dos pods
+# Ao habilitar, a secret de mesmo nome do app sera importada como variavel de ambiente,
+# onde as chaves se tornarao as variaveis.
+envFromSecret:
+  enable: false
+
+# Configuracao que ativa compartilhamento de variavies de ambiente
+# entre containers no mesmo pod, utilizando configMap
+# Referencia: https://kubernetes.io/docs/tasks/configure-pod-container/configure-pod-configmap/#configure-all-key-value-pairs-in-a-configmap-as-container-environment-variables
+envFromConfigmap:
+  enable: false
+
+# Ajusta contexto das probes
+# Metodo: httpGET na porta http/8080
+# Para saber como configurar as probes nas aplicacoes,
+# vide : https://docs.spring.io/spring-boot/docs/current/reference/html/production-ready-features.html#production-ready-kubernetes-probes
+# ------------------------------------------------------------------------------------------------------------ #
+# Probes de liveness sao as que verificam se o pod/aplicacao precisa reiniciar
+# Ex: Alteracao na configuracao de startup da app detectada na execucao ou outro
+livenessProbe:
+  path: /actuator/health/liveness
+  initialDelaySeconds: 60
+  timeoutSeconds: 10
+  periodSeconds: 30
+  successThreshold: 1
+  failureThreshold: 3
+
+# Probes de readiness sao as que vao bloquear/permitir trafego para o pod de acordo com o status da mesma
+# Ex: bloquear em caso de GC ou outra coisa dependente fora do ar / liberar trafego ao completar uma tarefa
+readinessProbe:
+  path: /actuator/health/readiness
+  initialDelaySeconds: 30
+  timeoutSeconds: 10
+  periodSeconds: 30
+  successThreshold: 1
+  failureThreshold: 3
+
+# Probes de startup ajudam a melhorar o tempo de inicialização X prontidão das aplicacoes
+# PS: Se utilizar esta probe, entao diminua o valor (tempo) das demais probes (initialDelay, timeoutSeconds)
+# Formula:
+# tempo_maximo_de_espera = (initialDelaySeconds + periodSeconds) + (periodSeconds X failureThreshold)
+startupProbe:
+  enabled: true
+  path: /actuator/health
+  initialDelaySeconds: 60 # 1 minuto (captura de reinicializacao rapida)
+  timeoutSeconds: 5
+  periodSeconds: 10
+  successThreshold: 1
+  failureThreshold: 6 # 1 tentativa a cada 20 segundos 240x igual a aprox. 41 minutos (reinicializacao lenta)
+
+# Configuracoes personalizadas das quais nao a necessidade de configurar
+# Se mantera aqui por duvidas de um futuro haver necessidad de usar.
+# PS: Nao necessario
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Por padrao, nao criar serviceAccounts
+# Pois manteria o ambiente com lixo, contudo, por duvidas de um futuro necessitar de tal recurso,
+# este se mantera aqui ja previamente configurado.
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: false
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+# Anotacoes extras a serem colocadas no pod
+# PS: Nao necessario
+podAnnotations: {}
+
+# Configura contextos de seguranca do pod
+# PS: Nao necessario
+podSecurityContext: {}
+# fsGroup: 2000
+
+# Configura contextos de seguranca do deployment
+# PS: Nao necessario
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+# runAsNonRoot: true
+# runAsUser: 1000
+
+# Configuracoes de service
+# Permite alterar o tipo do servico a ser criado no kubernetes
+# Valores validos: ClusterIP / nodePort
+# Valor padrao: ClusterIP
+service:
+  type: ClusterIP
+
+# Configuracao para habilitar comunicacao via protocolo websocket
+# A porta padrao que sera exposta no container e no service sera 8081 (padrao)
+# Valor padrao: false
+websocket:
+  enabled: false
+  port: 8081
+
+# Configuracoes adicionais do deployment
+deployment:
+  # Permite alterar portas de exposição do container principal (aplicação)
+  containerPorts:
+    http: 8080
+    https: 8443
+
+  # Permite inserir outros containers ao pod da aplicação
+  # Referencia: https://kubernetes.io/docs/concepts/workloads/pods/#workload-resources-for-managing-pods
+  enableInitContainers: true
+  initContainers: []
+  #  - name: ubuntu
+  #    image: "busybox:1.31.1"
+  #    imagePullPolicy: IfNotPresent
+  #    command: []
+  #    env: []
+  #    - name: TZ
+  #      value: America/Sao_Paulo
+  #    envFrom:
+  #      - secretRef:       # Secrets compartilhadas
+  #          name: default  # Troque pelo nome correto (<nome-app>)
+  #      - configMapRef:    # Configmap com variaveis de ambiente compartilhadas
+  #          name: default  # Troque para o nome correto (<nome-app>)
+  #    resources: {}
+  #    volumeMounts: []
+  #     - mountPath: /etc/configmap/
+  #      name: default             # Troque para o nome correto (<nome-app>)
+  #      readOnly: true
+  #    - mountPath: /etc/secrets/
+  #      name: default-secret      # Troque pelo nome correto (<nome-app>-secret)
+  #      readOnly: true
+  enableSideContainers: false
+  sideContainers: []
+#  - name: ubuntu
+#    image: "busybox:1.31.1"
+#    imagePullPolicy: IfNotPresent
+#    command: []
+#    env: []
+#    - name: TZ
+#      value: America/Sao_Paulo
+#    envFrom:
+#      - secretRef:         # Secrets compartilhadas
+#          name: default    # Troque pelo nome correto (<nome-app>)
+#      - configMapRef:      # Configmap com variaveis de ambiente compartilhadas
+#          name: default    # Troque para o nome correto (<nome-app>)
+#    resources: {}
+#    volumeMounts: []
+#     - mountPath: /etc/configmap/
+#      name: default              # Troque para o nome correto (<nome-app>)
+#      readOnly: true
+#    - mountPath: /etc/secrets/
+#      name: default-secret       # Troque pelo nome correto (<nome-app>-secret)
+#      readOnly: true
+
+# Configuracoes de ingress
+# Por padrao, ira utilizar o ingress: alb-v2 (recebendo na porta HTTPS e transmitindo para svc/porta HTTP)
+# Formatdo dos endereços:
+# Endereço interno a ser gerado: http://<name>-<namespace>.app.vrbeneficios.io
+# Endereço externo a ser gerado: http://<name>-<namespace>.vr.com.br
+# PS: Endereço externo ainda nao possui auto-registro de DNS, deve ser aberto um chamado para registro na azure manualmente.
+ingress:
+  # Bloco de configuracao de Ingress para o ambiente VR Beneficios.
+  vr:
+    # Habilita a criação do ingress.
+    # Valores validos: true | false
+    enabled: true
+    # Nome do dominio que a app faz parte para segregacao de ALB's.
+    # Valores validos: adquirente, comum e emissor
+    # PS: Obrigatorio
+    tipoDominio: "adquirente"
+    # Opcao para habilitar o acesso HTTP ao URL interna. Padrao cria apenas HTTPS.
+    # Habilitar caso o seu serviço ainda receba conexões http de servicos que ainda não atualizaram a chamada para HTTPS.
+    # Ex: http://<app>-<namespace>.<stg|app>.vrbeneficios.io
+    # Valor padrao: falso
+    http:
+      enabled: false
+    # Opcoes de criacao de DNS/acessibilidade externa
+    external: true
+    # Opcoes de anotacoes adicionais (nao recomendado)
+    annotations: {}
+    # Contexto de roteamento padrao a ser cadastrado na regra do ALB. (Recomendado: '/' ou '/*')
+    path: /*
+    # --------------------------------------------------------------------------------- #
+    # ----------- Bloco referente a estrutura utilizada somente pelo ARGOCD ----------- #
+    # --------------------------------------------------------------------------------- #
+    # Opções de estratégia de deploy, a escolha DEVE ser bluegreen OU canario, NUNCA AS DUAS JUNTAS COMO TRUE.
+    # Estratégia de Deploy em PRD utilizando bluegreen, que ao se fazer um novo deploy é criado um endpoint com sufixo -blue na url com a
+    # nova versão da aplicação, e depois de uma aprovação, esta versão é instalada no endpoint green, que é a url acessada.
+    # Mais informações no link https://argoproj.github.io/argo-rollouts/features/bluegreen/.
+    bluegreen: false
+    # Estratégia de Deploy em PRD utilizando canario, que ao se fazer novo deploy é criado um endpoint com sufixo -canary na url, e o tráfego
+    # é balanceado gradativamente entre a versão antiga e a versão nova da aplicação com aprovações manuais. E ao final todo o tráfego é chaveado
+    # para a aplicação com a nova versão.
+    # Mais informações no link https://argoproj.github.io/argo-rollouts/features/canary/.
+    canary: false
+    # --------------------------------------------------------------------------------- #
+    # ----------- Fim do bloco referente a estrutura utilizada pelo ARGOCD ------------ #
+    # --------------------------------------------------------------------------------- #
+
+  # Fim do bloco de configuracao VR Beneficios.
+
+# Configuracao de resource padrao para os pods.
+# Devido a pratica de definir o limite da JVM (-Xmx) para 512MB, o limite do pod foi ajustado para 700MB
+# tendo uma abertura de 200MB. Este valor pode ser ajustado de acordo com a necessidade.
+###
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    memory: 700Mi
+
+# Configura autoScalling da aplicacao
+# cpuUtilization: Valor inteiro da qual e considerado como porcentagem de uso medio entre todos os pods na hora de calcular o scale up/down.
+# memoryAverageValy: Valor da memoria absoluto em "Mi", que e considerado na hora de calcular o scale up/down. PS: Deixar sempre um falor menor que o
+# informado no campo resources.limits.memory
+autoscaling:
+  enabled: true
+  minReplicas: 1 #valor usado tambem pelo template scaledObject caso o Keda for habilitado
+  maxReplicas: 1 #valor usado tambem pelo template scaledObject caso o Keda for habilitado
+  # Configura o comportamento do HPA
+  # Obs: CUIDADO, A MÁ CONFIGURAÇÃO DISTO PODE DERRUBAR AMBIENTE PRODUTIVO, realize muitos testes ante de alterar quaisquer valores
+  behavior:
+    scaleDown:
+      # Janela de estabilizacao entre alteracoes: 10 minutos (10 minutos de avaliação de carga)
+      stabilizationWindowSeconds: 600
+      pod: # Diminui 1 pod(s) a cada 5 minuto(s)
+        podsPerScaleDown: 1
+        periodSeconds: 300
+      percent: # Diminui os pod(s) do servico com base na porcentagem de uso de 20% durante 5 minuto(s)
+        percentPerScaleDown: 20
+        periodSeconds: 300
+    scaleUp:
+      # Janela de estabilizacao entre alteracoes: 5 minutos (2 minutos subida pod + 1 minutos infra EKS = 2 minutos avaliando carga)
+      stabilizationWindowSeconds: 300
+      pod: # Aumenta 2 pod(s) a cada 3 minuto(s)
+        podPerScaleUp: 2
+        periodSeconds: 180
+
+#Configura o keda na aplicacao, temos algumas triggers disponiveis, mantenha no seu helm somente o que for utilizar,
+# cada triger tem um nome unico, no cron por exemplo se for utilizar mais de um agendamento, deve ser definido como abaixo, se for apenas 1 remova o bloco cron2
+###### Descomente as triggers que deseja utilizar, caso nao for utilizar mantenha comentado ou sem a trigger
+keda:
+  enabled: false  # Habilita o KEDA
+  minReplicas: 1  # Número mínimo de réplicas
+  maxReplicas: 10  # Número máximo de réplicas
+  cooldownPeriod: 90  # O período em segundos de espera após o último gatilho ser relatado como ativo antes de dimensionar o recurso de volta
+  pollingInterval: 60 #Intervalo em segundos em que verificará cada fonte de gatilho no ScaledObject default 60.
+  scaledObject:
+    triggers:
+#      cron1:
+#        type: "cron"
+#        metadata:
+#          timezone: "America/Sao_Paulo"
+#          start: "10 20 * * *"
+#          end: "15 20 * * *"
+#          desiredReplicas: "2"
+#      cron2:
+#        type: "cron"
+#        metadata:
+#          timezone: "America/Sao_Paulo"
+#          start: "17 20 * * *"
+#          end: "25 23 * * *"
+#          desiredReplicas: "3"
+#      cpu:
+#        type: "cpu"
+#        metadata:
+#          type: Utilization  # Tipo de métrica para CPU, os tipos permitidos são 'Utilization' ou 'AverageValue'
+#          value: "80"  # Utilização de CPU em porcentagem
+#      memory:
+#        type: "memory"
+#        metadata:
+#          type: AverageValue  # Tipo de métrica para memória, pode ser 'Utilization' ou 'AverageValue'
+#          value: "100Mi"  # Valor médio de utilização de memória em MiB
+#      rabbitmq:
+#        type: "rabbitmq"
+#        metadata:
+#          queueName: TransacoesPush #nome da fila
+#          host-rabbit: amqps://user:pass@host:porta/v-host #valor deve ser inserido no secret por conter dados autenticação
+#          tls: enable
+#          mode: QueueLength
+#          value: "1000" #Valor que sera usado como base para escalar ambiente
+#          activationValue: "90" #opcional, quando atingido este valor o Keda começa a considerar o escalonamento. Abaixo disso considera o downscale
+#          scaleUpPods: "2" #numero de pods que serao adicionados por vez, deve estar entre o min ate o max de pods definidos pro hpa
+#          scaleDownPods: "1" #Numero de pods que deve deixar apos a fila ficar abaixo  do valor definido
+#       prometheus:
+#         type: prometheus
+#         metadata:
+#           serverAddress: https://prometheus-vrprd.vrbeneficios.io
+#           #metricName: http_requests_total #para utilizar esta voce deve remover a query
+#           threshold: '200'
+#           query: avg(avg_over_time(container_memory_usage_bytes{pod=~"superapp-bff-centralajuda.*"}[5m]))
+#      Dynatrace:
+#        type: "dynatrace"
+#        metadata:
+#          host-dynatrace: https://instance.dynatrace.com #Deve ser inserido no Secret
+#          token-dynatrace: ***** #Deve ser inserido no secret
+#          metricSelector: 'builtin:apps.web.activeUsersEst:filter(eq("dt.entity.application","APPLICATION-F715BE5E8C2816D9")):value:fold' ##Construa a metrica com base na sua necessidade
+#          from: now-24h #opcional periodo em que a query filtra para trazer resultados
+#          threshold: "2" #Valor ao qual o scaledobject aciona o scalling
+
+# Configura nodeSelector para aplicacao
+# Utilize "type: app" para aplicacoes (maquinas t3a.xlarge ou m5.xlarge), valor padrao.
+# Utlize "type: service" para servicos (maquinas t3.medium).
+# PS: Deixar em branco caso possua um fargate-profile habilitado para o namespace da aplicacao.
+nodeSelector:
+  type: app
+#  type: service
+
+# Configura tolerancia do deployment
+# PS: Nao necessario
+tolerations: []
+
+# Configura afinidade do deployment.
+# PS: Nao necessario
+affinity: {}
+
+# Conteudo para configmap da aplicacao (em YAML). O configmap sera criado independente se houver valor ou nao.
+# O conteudo do configmap fica acessivel em /etc/configmap/*
+# PS: Utilize "|-" para definir uma string-multilinha
+configmap:
+  data:
+    application.yml: |-
+      spring:
+        jpa:
+          show-sql: true
+        liquibase:
+          enabled: true
+          default-schema: credito
+          liquibase-schema: credito
+        datasource:
+          url: jdbc:postgresql://credito-vr-devhmp.cvx1bjdqm5qv.us-east-2.rds.amazonaws.com:5432/precificacao_hmp
+          #username: (secrets)
+          #password: (secrets)
+        kafka:
+          bootstrap-servers: pkc-n00kk.us-east-1.aws.confluent.cloud:9092
+          properties:
+            use.latest.version: true
+            enhanced.avro.schema.support: true
+            security.protocol: SASL_SSL
+            sasl.mechanism: PLAIN
+            #sasl.jaas.config: (secrets)
+            schema.registry.url: https://psrc-mw2k1.us-east-2.aws.confluent.cloud
+            basic:
+              auth:
+                #credentials.source: (secrets)
+                #user.info: (secrets)
+            ssl.endpoint.identification.algorithm: https
+          admin:
+            auto-create: false
+          consumer:
+            group-id: cg.vrb.credito-pf.ms-motor-precificacao
+            key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+            value-deserializer: io.confluent.kafka.serializers.KafkaAvroDeserializer
+          producer:
+            key-serializer: org.apache.kafka.common.serialization.StringSerializer
+            value-serializer: io.confluent.kafka.serializers.KafkaAvroSerializer
+            properties:
+              auto.register.schemas: false
+      app:
+        analises:
+          codigo-politica: 9683
+          tempo-minutos-reutilizar: 21600
+          cnpj-empresa-vr: '02535864000133'
+          quantidade-maxima-analises: 2
+        precificacao:
+          produto:
+            nome: ECONSIGNADO
+        kafka:
+          ofertas:
+            topic-name: pvt.vrb.credito-pf.motor-precificacao.credito-trabalhador-ofertas
+            listener:
+              concurrency: 1
+            retry:
+              concurrency: 1
+              max-attempts: 3
+              initial-interval-ms: 2000
+              multiplier: 2
+          analises:
+            topic-name: pub.vrb.credito-pf.analise-credito.analises-concluidas
+            listener:
+              concurrency: 1
+        ms-analise-credito:
+          host: http://ms-analise-credito.credito-pf-qa.svc.cluster.local:8080
+        ms-credito-pf:
+          host: http://ms-credito-vr.credito-pf-qa.svc.cluster.local:8080
+        funcao:
+          host: https://funcaohml.vr.com.br
+          #client-secret: (secrets)
+          #grant-type: (secrets)
+          #username: (secrets)
+          #password: (secrets)
+          apis:
+            aut-oferta:
+              url: ${app.funcao.host}/APICore/FIApiAutOferta
+      management:
+        prometheus:
+          metrics:
+            export:
+              enabled: true
+              pushgateway:
+                enabled: true
+                base-url: http://prometheus-pushgateway.prometheus.svc.cluster.local:9091
+                push-rate: 15s
+        tracing:
+          enabled: true # Default é 'true'. Caso queira desabilitar o trace, configure para 'false'.
+          sampling.probability: 1.0 # Significa que 100% das operações terão tracing. Pode ser configurável entre '0.0' e '1.0'.
+          propagation.type: B3 # Default para Spring Boot 3 é o 'W3C'. Entretanto, com o 'B3', garantimos compatibilidade com apps Spring Boot 2.
+
+#   application.properties: |-
+#     lala=lele
+#     lala=lele
+#     lala=lele
+#   configuration.json: ""
+#   configuration.yaml: ""
+
+# Configuracao de persistencia (EFS) para o deployment
+# Os discos sao montados em "/data"
+# PS: Necessario criar EFS na AWS antes de aplicar no chart/deployment.
+# PS: Tamanho padrao e 100Gi pois EFS nao possui limite de armazenamento.
+# PS: Cada ambiente (dev, qa e prd) deve possuir seu proprio disco EFS.
+# PS: O conteudo do EFS deve ser colocado de forma manual (no caso de libs,pdf, caso tenha)
+persistence:
+  enabled: false
+  size: 100Gi
+  efsID: fs-00000000
